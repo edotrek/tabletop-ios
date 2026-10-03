@@ -4,3 +4,4 @@ Support/Info.plist
 Payload/
 *.ipa
 .DS_Store
+ipa/
