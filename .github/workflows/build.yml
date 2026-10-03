@@ -1,0 +1,48 @@
+name: Compila IPA
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versione Xcode
+        run: xcodebuild -version
+
+      - name: Installa XcodeGen
+        run: brew install xcodegen
+
+      - name: Genera progetto Xcode
+        run: xcodegen generate
+
+      - name: Compila (senza firma)
+        run: |
+          set -o pipefail
+          xcodebuild -project TabletopCam.xcodeproj -scheme TabletopCam \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            build | tee xcodebuild.log | grep -E "error:|warning:|BUILD" || true
+          test -d build/Build/Products/Release-iphoneos/TabletopCam.app
+
+      - name: Crea IPA
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/TabletopCam.app Payload/
+          zip -qr TabletopCam.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TabletopCam-${{ github.run_number }}
+          path: TabletopCam.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
