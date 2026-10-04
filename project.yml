@@ -6,7 +6,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1"
+    MARKETING_VERSION: "0.2"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   TabletopCam:
@@ -28,6 +28,11 @@ targets:
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UIApplicationSupportsIndirectInputEvents: true
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.edotrek.tabletopcam
+            CFBundleURLSchemes: [tabletopcam]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.edotrek.tabletopcam

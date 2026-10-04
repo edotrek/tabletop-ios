@@ -2,21 +2,32 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var camera: CameraController
+    @EnvironmentObject var link: TabletopLink
     @State private var showLog = false
+    @State private var showPairing = false
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 10) {
+            linkBar
+
             VStack(spacing: 2) {
-                Text(camera.statusText).font(.headline)
+                Text(link.isSending ? "Scatto e invio a Tabletop…" : camera.statusText).font(.headline)
                 Text(camera.liveInfo).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                if link.state == .online {
+                    if let last = link.lastUpload {
+                        Text(last).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    if link.autoCapture {
+                        Text(camera.motionInfo).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                }
             }
-            .padding(.top, 4)
 
             CameraPreview(camera: camera)
                 .aspectRatio(3.0 / 4.0, contentMode: .fit)
                 .overlay {
-                    if camera.isCapturing {
+                    if camera.isCapturing || link.isSending {
                         ProgressView().controlSize(.large).tint(.white)
                     }
                 }
@@ -75,7 +86,11 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
 
                 Button {
-                    camera.capture()
+                    if link.isPaired {
+                        link.send(reason: "request")
+                    } else {
+                        camera.capture()
+                    }
                 } label: {
                     Circle()
                         .strokeBorder(.white, lineWidth: 4)
@@ -86,7 +101,8 @@ struct ContentView: View {
 
                 Menu {
                     Button("Mostra log") { showLog = true }
-                    Section("Test") {
+                    Section("Prove (la foto resta sul telefono)") {
+                        Button("Scatto di prova") { camera.capture() }
                         Button("Serie da 5 scatti") { camera.captureSeries(count: 5) }
                         Button("Serie da 20 scatti") { camera.captureSeries(count: 20) }
                     }
@@ -108,5 +124,49 @@ struct ContentView: View {
         .sheet(isPresented: $showLog) {
             LogView()
         }
+        .sheet(isPresented: $showPairing) {
+            PairingView()
+        }
+    }
+
+    private var linkColor: Color {
+        switch link.state {
+        case .online: return .green
+        case .connecting: return .yellow
+        case .offline: return .red
+        case .unpaired: return .gray
+        }
+    }
+
+    private var linkText: String {
+        switch link.state {
+        case .unpaired: return "Non collegata a Tabletop"
+        case .connecting: return "Collegamento a Tabletop…"
+        case .online: return "Collegata a Tabletop · \(link.sentCount) foto inviate"
+        case .offline(let message): return "Tabletop non raggiungibile: \(message)"
+        }
+    }
+
+    private var linkBar: some View {
+        HStack(spacing: 8) {
+            Circle().fill(linkColor).frame(width: 10, height: 10)
+            Text(linkText).font(.footnote).lineLimit(2)
+            Spacer()
+            if link.isPaired {
+                Menu {
+                    Toggle("Scatto automatico a fine mossa", isOn: $link.autoCapture)
+                    Button("Invia una foto ora") { link.send(reason: "request") }
+                    Button("Scollega", role: .destructive) { link.unpair(reason: "scelto dall'utente") }
+                } label: {
+                    Image(systemName: "gearshape").font(.title3)
+                }
+            } else {
+                Button("Collega") { showPairing = true }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 4)
     }
 }

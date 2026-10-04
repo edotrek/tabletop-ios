@@ -22,6 +22,7 @@ struct CaptureResult: Identifiable {
     let title: String
     let info: [String]
     let files: [URL]
+    let data: Data
     let thumbnail: UIImage?
     let crop: UIImage?
 }
@@ -38,11 +39,13 @@ final class CameraController: NSObject, ObservableObject {
     @Published var isLocked = false
     @Published var jpegQuality: Double? = nil
     @Published var lastResult: CaptureResult?
+    @Published var motionInfo = ""
     @Published var mode: CaptureMode = .jpeg {
         didSet { if mode != oldValue { modeChanged() } }
     }
 
     let session = AVCaptureSession()
+    let motion = MotionDetector()
     private let photoOutput = AVCapturePhotoOutput()
     private var device: AVCaptureDevice?
     private let sessionQueue = DispatchQueue(label: "camera.session")
@@ -53,6 +56,7 @@ final class CameraController: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        motion.onInfo = { [weak self] info in self?.motionInfo = info }
         let nc = NotificationCenter.default
         nc.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { n in
             log("ERRORE sessione: \(String(describing: n.userInfo?[AVCaptureSessionErrorKey]))")
@@ -124,6 +128,11 @@ final class CameraController: NSObject, ObservableObject {
             return
         }
         session.addOutput(photoOutput)
+        if session.canAddOutput(motion.output) {
+            session.addOutput(motion.output)
+        } else {
+            log("ATTENZIONE: impossibile aggiungere l'uscita video per il rilevamento delle mosse")
+        }
 
         logFormats(dev)
         let presetMax = maxPixels(dev.activeFormat)
@@ -354,6 +363,21 @@ final class CameraController: NSObject, ObservableObject {
         next()
     }
 
+    /// Scatto per Tabletop: sempre JPEG alla massima risoluzione, qualità predefinita, senza salvare.
+    /// Da chiamare sul main thread; `completion` arriva su una coda qualsiasi.
+    func captureForUpload(completion: @escaping (Data?) -> Void) {
+        guard isReady, let dim = availableDims.last else {
+            log("Fotocamera non pronta: scatto per Tabletop annullato")
+            completion(nil)
+            return
+        }
+        let params = CaptureParams(mode: .jpeg, dim: dim, jpegQuality: nil)
+        motion.snapshotForUpload()
+        sessionQueue.async {
+            self.performCapture(params, light: true) { completion($0?.data) }
+        }
+    }
+
     private func currentParams() -> CaptureParams? {
         guard let dim = selectedDim else { return nil }
         return CaptureParams(mode: mode, dim: dim, jpegQuality: jpegQuality)
@@ -455,7 +479,7 @@ final class CameraController: NSObject, ObservableObject {
         log("Scatto \(summary): \(timing)")
 
         if light {
-            return CaptureResult(title: summary, info: info, files: [], thumbnail: nil, crop: nil)
+            return CaptureResult(title: summary, info: info, files: [], data: mainData, thumbnail: nil, crop: nil)
         }
 
         var urls: [URL] = []
@@ -470,7 +494,7 @@ final class CameraController: NSObject, ObservableObject {
         }
         let thumb = makeThumbnail(mainData, maxPixels: 1600)
         let crop = makeCenterCrop(mainData, size: 1200, orientation: mi?.orientation ?? 1)
-        return CaptureResult(title: summary, info: info, files: urls, thumbnail: thumb, crop: crop)
+        return CaptureResult(title: summary, info: info, files: urls, data: mainData, thumbnail: thumb, crop: crop)
     }
 
     private func convertRawToJpeg(_ data: Data, quality: Double) -> Data? {
