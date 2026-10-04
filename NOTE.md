@@ -30,3 +30,19 @@ viene scelto quello (preferendo 4:3 e 420f). `maxPhotoQualityPrioritization = .q
 - Qualità JPEG "predefinita" indistinguibile da 1.0 → usare la predefinita (~7 MB).
 - Serie da 20 scatti a 48 MP: retta bene, senza scaldare troppo.
 - Scelte per la Fase B: JPEG 48 MP, qualità predefinita, niente ProRAW.
+
+## Fase B — Integrazione con Tabletop (versione 0.2)
+
+- L'app è un dispositivo `photo-camera` come l'agente della reflex: abbinamento con `POST /api/devices/pair`
+  (accetta codice, link "Scarica l'agente" o `tabletopcam://pair?server=…&code=…`), token in UserDefaults,
+  long polling `GET /api/devices/poll`, invio `POST /api/devices/frame?reason=request|change`.
+  Nessuna modifica al server.
+- Foto inviate: sempre JPEG 48 MP, qualità predefinita (~7 MB), orientamento via EXIF.
+- All'avvio/abbinamento invia subito una foto (conferma anche che il server accetta il token).
+- **Fine mossa** rilevata nell'app come in `startHdFrames` (CapturePage.tsx): miniatura 64 px di luminanza
+  dal flusso video (AVCaptureVideoDataOutput, 2 controlli/s), scena ferma (diff < 2,5) da 1 s e
+  diversa dall'ultima foto inviata (diff > 4) → scatto con `reason=change`. Attivo solo se collegata.
+- Certificato: se iOS non si fida già della CA di Caddy, l'app accetta il certificato solo per l'host del server.
+- Proposta per l'altro agente (facoltativa): nel riquadro "Collega reflex" mostrare anche un QR con
+  `tabletopcam://pair?server=<origin>&code=<codice>`: inquadrandolo con la Fotocamera dell'iPhone
+  si apre l'app e si abbina da sola (oggi bisogna far arrivare il link sull'iPhone a mano).
