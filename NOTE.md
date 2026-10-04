@@ -26,4 +26,7 @@ viene scelto quello (preferendo 4:3 e 420f). `maxPhotoQualityPrioritization = .q
   dettaglio (e i JPEG pesano poco: ~1,2 bit/pixel). Ripetere con luce del tavolo vera.
 - Blocco AF/AE/WB: funziona (tocco → messa a fuoco → blocco).
 - Compatibilità server: 8064 px < limite 8192 px, 7 MB < 40 MB → nessuna modifica necessaria.
-- Da fare: confronto visivo con la reflex, qualità JPEG 0,95, serie da 20 (calore/batteria).
+- **Giudizio dell'utente (2026-10-04): qualità migliore della reflex Canon 600D (18 MP) → Fase A superata.**
+- Qualità JPEG "predefinita" indistinguibile da 1.0 → usare la predefinita (~7 MB).
+- Serie da 20 scatti a 48 MP: retta bene, senza scaldare troppo.
+- Scelte per la Fase B: JPEG 48 MP, qualità predefinita, niente ProRAW.
