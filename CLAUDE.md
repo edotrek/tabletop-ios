@@ -27,7 +27,7 @@ poi si decide se integrarlo.
 - **Nessun Mac.** Si lavora su una VM Ubuntu (questa). La compilazione iOS va fatta su **GitHub Actions**
   (runner macOS), producendo un **IPA non firmato** (`CODE_SIGNING_ALLOWED=NO`), impacchettato come
   `Payload/<App>.app` zippato in `.ipa`, scaricabile come artifact.
-- **Installazione**: l'utente ha un container **atvloadly** che firma con un Apple ID gratuito e installa
+- **Installazione**: ATTENZIONE, atvloadly funziona solo per Apple TV, NON per iPhone (scoperto il 2026-10-03). Metodo per iPhone da definire (vedi NOTE.md). Con Apple ID gratuito
   (e reinstalla ogni 7 giorni) l'IPA sull'iPhone. Con l'Apple ID gratuito: firma valida 7 giorni,
   massimo 3 app, niente capability a pagamento (la fotocamera va bene). Usare un bundle id univoco.
 - **Nessun debugger/console Xcode**: prevedi nell'app una **schermata di log** con pulsante
@@ -95,7 +95,7 @@ stessa `AVCaptureSession`. Complesso: affrontarlo solo se la Fase B convince.
 ## 4. Ciclo di lavoro con l'utente
 1. Scrivi/aggiorna il codice qui, fai commit e push su GitHub.
 2. La CI compila e pubblica l'IPA come artifact (scaricabile anche con `gh run download`).
-3. L'utente installa l'IPA con atvloadly sull'iPhone e prova.
+3. L'utente installa l'IPA (metodo da definire, non atvloadly) sull'iPhone e prova.
 4. L'utente ti incolla il log copiato dall'app e le sue osservazioni.
 
 Tieni un file `NOTE.md` con le scoperte (risoluzioni ottenute, tempi, problemi): servirà a decidere se
