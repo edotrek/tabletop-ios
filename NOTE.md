@@ -74,4 +74,4 @@ scatto solo dal long polling. Le foto a fine mossa arrivano con `reason=change`.
 - In Tabletop il video risultava spostato del 2,4% (verticale, costante) rispetto alla foto.
 - Diagnosi nell'app (0.5): fotogramma video grezzo vs foto 48 MP → spostamento 0,0–0,2%, somiglianza 0,97.
   **Nel telefono coincidono**: la differenza nasce dopo (codifica/trasmissione o visualizzazione).
-  Verifiche chieste a Tabletop in `RICHIESTA-TABLETOP-ALLINEAMENTO.md`. Intanto c'è la correzione manuale.
+  **Decisione dell'utente: si tiene la correzione manuale di Tabletop**, nessuna ricerca della causa.

@@ -60,3 +60,7 @@ come metadato WebRTC (CVO) → chi riceve deve vedere 2160×2880; livelli 1440×
 3. Disegnare un fotogramma del `<video>` su canvas alle dimensioni native e confrontarlo con la foto con
    la stessa correlazione: se coincidono, la differenza è nel modo in cui video e foto vengono stesi
    nella finestra (CSS: `object-fit`, `object-position`, bordi/barre, arrotondamenti).
+
+## Decisione dell'utente (2026-10-05)
+**Si tiene la correzione manuale** di Tabletop ("Allinea il video alla foto"), che funziona perfettamente.
+Le verifiche suggerite sopra **non sono da fare**: nessuna correzione automatica né nell'app né in Tabletop.
