@@ -6,13 +6,19 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.2"
+    MARKETING_VERSION: "0.3"
     CURRENT_PROJECT_VERSION: "1"
+packages:
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift
+    exactVersion: 2.17.0
 targets:
   TabletopCam:
     type: application
     platform: iOS
     sources: [Sources]
+    dependencies:
+      - package: LiveKit
     scheme: {}
     info:
       path: Support/Info.plist

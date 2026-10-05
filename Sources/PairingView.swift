@@ -2,6 +2,8 @@ import SwiftUI
 
 struct PairingView: View {
     @EnvironmentObject var link: TabletopLink
+    @EnvironmentObject var camera: CameraController
+    @State private var showScanner = false
     @Environment(\.dismiss) private var dismiss
     @State private var code = ""
     @State private var server = ""
@@ -12,11 +14,18 @@ struct PairingView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("1. Nel pannello di Tabletop apri **Collega reflex**.")
-                    Text("2. Copia il link del pulsante **Scarica l'agente della reflex** (tasto destro → Copia indirizzo link) e fallo arrivare sull'iPhone, per esempio mandandotelo in chat.")
-                    Text("3. Incollalo qui sotto entro 10 minuti e tocca **Collega**.")
+                    Text("Nel pannello di Tabletop apri **Collega reflex** e inquadra il **QR piccolo** \"per l'app Tabletop Cam\" (vale 10 minuti).")
+                    Button {
+                        camera.setPaused(true)
+                        showScanner = true
+                    } label: {
+                        Label("Scansiona il QR", systemImage: "qrcode.viewfinder")
+                            .font(.headline)
+                    }
                 } header: {
                     Text("Come fare")
+                } footer: {
+                    Text("In alternativa: copia il link del pulsante \"Scarica l'agente della reflex\", fallo arrivare sull'iPhone e incollalo qui sotto.")
                 }
                 .font(.callout)
 
@@ -72,6 +81,12 @@ struct PairingView: View {
             }
             .onAppear {
                 if server.isEmpty { server = link.server }
+            }
+            .sheet(isPresented: $showScanner, onDismiss: { camera.setPaused(false) }) {
+                QRScannerView { text in
+                    code = text
+                    Task { await pair() }
+                }
             }
         }
     }

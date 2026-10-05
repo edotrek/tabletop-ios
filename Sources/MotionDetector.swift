@@ -14,6 +14,8 @@ final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     /// Chiamate sul main thread.
     var onMoveEnded: (() -> Void)?
     var onInfo: ((String) -> Void)?
+    /// Ogni fotogramma (sulla coda video), per lo streaming. Da impostare prima dell'avvio.
+    var onFrame: ((CMSampleBuffer) -> Void)?
 
     private let queue = DispatchQueue(label: "camera.motion")
     // Stato usato solo sulla coda `queue`.
@@ -61,6 +63,7 @@ final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        onFrame?(sampleBuffer)
         let now = CACurrentMediaTime()
         guard now - lastCheck >= Self.checkInterval, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastCheck = now

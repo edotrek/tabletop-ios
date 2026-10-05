@@ -36,26 +36,36 @@ final class TabletopLink: ObservableObject {
         static let autoCapture = "autoCapture"
     }
 
+    /// Una sola sessione HTTP per tutta l'app, con la gestione del certificato del server.
+    static let trust = TrustDelegate()
+    static let urlSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config, delegate: trust, delegateQueue: nil)
+    }()
+
+    let streamer: LiveStreamer
     private let camera: CameraController
-    private let trust = TrustDelegate()
-    private let session: URLSession
-    private var token: String?
+    private var trust: TrustDelegate { Self.trust }
+    private var session: URLSession { Self.urlSession }
+    private var token: String? {
+        didSet { streamer.update(server: token == nil ? nil : server, token: token) }
+    }
     private var pollTask: Task<Void, Never>?
     private var pending: String?
 
-    init(camera: CameraController) {
+    init(camera: CameraController, streamer: LiveStreamer) {
         self.camera = camera
+        self.streamer = streamer
         let defaults = UserDefaults.standard
         server = defaults.string(forKey: Keys.server) ?? Self.defaultServer
         token = defaults.string(forKey: Keys.token)
         autoCapture = defaults.object(forKey: Keys.autoCapture) as? Bool ?? true
-        let config = URLSessionConfiguration.default
-        config.waitsForConnectivity = false
-        session = URLSession(configuration: config, delegate: trust, delegateQueue: nil)
         trust.allowedHost = URL(string: server)?.host
         camera.motion.onMoveEnded = { [weak self] in
             Task { @MainActor in self?.send(reason: "change") }
         }
+        streamer.update(server: token == nil ? nil : server, token: token)
         if token != nil {
             log("Abbinamento salvato con \(server): mi ricollego")
             start()

@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var camera: CameraController
     @EnvironmentObject var link: TabletopLink
+    @EnvironmentObject var streamer: LiveStreamer
     @State private var showLog = false
     @State private var showPairing = false
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
@@ -14,6 +15,9 @@ struct ContentView: View {
             VStack(spacing: 2) {
                 Text(link.isSending ? "Scatto e invio a Tabletop…" : camera.statusText).font(.headline)
                 Text(camera.liveInfo).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                if link.isPaired {
+                    Text("Video: \(streamer.status)").font(.caption).foregroundStyle(streamer.isLive ? .green : .secondary)
+                }
                 if link.state == .online {
                     if let last = link.lastUpload {
                         Text(last).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
@@ -155,6 +159,11 @@ struct ContentView: View {
             if link.isPaired {
                 Menu {
                     Toggle("Scatto automatico a fine mossa", isOn: $link.autoCapture)
+                    Toggle("Trasmetti video", isOn: $streamer.enabled)
+                    Picker("Fluidità video", selection: $streamer.fps) {
+                        ForEach(LiveStreamer.fpsOptions, id: \.self) { Text("\($0) fps").tag($0) }
+                    }
+                    .pickerStyle(.menu)
                     Button("Invia una foto ora") { link.send(reason: "request") }
                     Button("Scollega", role: .destructive) { link.unpair(reason: "scelto dall'utente") }
                 } label: {

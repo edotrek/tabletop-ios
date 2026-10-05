@@ -24,7 +24,7 @@ jobs:
           set -o pipefail
           xcodebuild -project TabletopCam.xcodeproj -scheme TabletopCam \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
-            -derivedDataPath build \
+            -derivedDataPath build -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             build | tee xcodebuild.log | grep -E "error:|warning:|BUILD" || true

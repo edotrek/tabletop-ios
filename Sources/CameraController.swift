@@ -218,6 +218,20 @@ final class CameraController: NSObject, ObservableObject {
         log("Uscita foto: qualità max \(o.maxPhotoQualityPrioritization.rawValue) (3 = quality), zero shutter lag \(o.isZeroShutterLagSupported)/\(o.isZeroShutterLagEnabled), responsive \(o.isResponsiveCaptureSupported)/\(o.isResponsiveCaptureEnabled), maxPhotoDimensions \(Dim(o.maxPhotoDimensions).label)")
     }
 
+    /// Il lettore di QR usa la fotocamera per conto suo: nel frattempo fermiamo la nostra sessione.
+    func setPaused(_ paused: Bool) {
+        sessionQueue.async {
+            guard self.configured else { return }
+            if paused && self.session.isRunning {
+                self.session.stopRunning()
+                log("Fotocamera in pausa (lettore QR)")
+            } else if !paused && !self.session.isRunning {
+                self.session.startRunning()
+                log("Fotocamera ripresa")
+            }
+        }
+    }
+
     // MARK: - Modalità (ProRAW va attivato sull'uscita)
 
     private func modeChanged() {
