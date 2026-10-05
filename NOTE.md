@@ -69,3 +69,9 @@ pubblica su LiveKit una traccia video "table", le sue finestre mostrino **il vid
 usare le **foto HD** (modalità Foto HD della finestra / foto a fine mossa). L'app non usa il WebSocket:
 non manda `device-info` (le proporzioni arrivano dalle foto: verticale 3:4) e riceve le richieste di
 scatto solo dal long polling. Le foto a fine mossa arrivano con `reason=change`.
+
+### Allineamento foto/video (2026-10-05)
+- In Tabletop il video risultava spostato del 2,4% (verticale, costante) rispetto alla foto.
+- Diagnosi nell'app (0.5): fotogramma video grezzo vs foto 48 MP → spostamento 0,0–0,2%, somiglianza 0,97.
+  **Nel telefono coincidono**: la differenza nasce dopo (codifica/trasmissione o visualizzazione).
+  Verifiche chieste a Tabletop in `RICHIESTA-TABLETOP-ALLINEAMENTO.md`. Intanto c'è la correzione manuale.
