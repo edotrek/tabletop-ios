@@ -46,3 +46,26 @@ viene scelto quello (preferendo 4:3 e 420f). `maxPhotoQualityPrioritization = .q
 - Proposta per l'altro agente (facoltativa): nel riquadro "Collega reflex" mostrare anche un QR con
   `tabletopcam://pair?server=<origin>&code=<codice>`: inquadrandolo con la Fotocamera dell'iPhone
   si apre l'app e si abbina da sola (oggi bisogna far arrivare il link sull'iPhone a mano).
+
+## Fase C — Video + foto nella stessa app (versione 0.3)
+
+- **LiveKit Swift SDK 2.17.0** (Swift Package, prima dipendenza esterna). IPA ~9 MB.
+- Token da `POST /api/media-token` con `{"participantToken": deviceToken}` → identità LiveKit = id del
+  dispositivo `photo-camera`. Traccia **"table"**, sorgente camera, H.264, simulcast come CapturePage.tsx:
+  2880×2160 (max 24 Mbps × fps/30, min ×0,5) + 1440×1080 (4 Mbps) + 720×540 (1,2 Mbps); fluidità
+  30/20/15/10/5 fps (predefinita 15) scelta nell'app.
+- Fotogrammi presi dall'AVCaptureVideoDataOutput già usato per il rilevamento mosse (formato 48 MP:
+  video 4032×3024 30 fps), ridotti a 2880×2160 con VTPixelTransferSession (4032×3024 supera i limiti
+  H.264) e marcati con rotazione 90° → chi guarda riceve un video **verticale 2160×2880**, stesso
+  orientamento delle foto (6048×8064 dopo l'EXIF).
+- Durante lo scatto a 48 MP il video può fermarsi un attimo: accettato dall'utente.
+- Lettore QR nell'app (VisionKit DataScannerViewController) per il QR `tabletopcam://pair` del pannello;
+  la sessione della fotocamera viene messa in pausa mentre il lettore è aperto.
+
+### Richiesta per l'altro agente (Tabletop)
+Oggi il tavolo tratta i dispositivi `photo-camera` solo come foto. Serve che, se un `photo-camera`
+pubblica su LiveKit una traccia video "table", le sue finestre mostrino **il video dal vivo** come per una
+`table-camera` (con la scelta della qualità/livello simulcast in base alla finestra) **e** continuino a
+usare le **foto HD** (modalità Foto HD della finestra / foto a fine mossa). L'app non usa il WebSocket:
+non manda `device-info` (le proporzioni arrivano dalle foto: verticale 3:4) e riceve le richieste di
+scatto solo dal long polling. Le foto a fine mossa arrivano con `reason=change`.
