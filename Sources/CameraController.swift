@@ -130,6 +130,10 @@ final class CameraController: NSObject, ObservableObject {
         session.addOutput(photoOutput)
         if session.canAddOutput(motion.output) {
             session.addOutput(motion.output)
+            // Niente stabilizzazione elettronica: ritaglierebbe e sposterebbe il video rispetto alle foto.
+            if let conn = motion.output.connection(with: .video), conn.isVideoStabilizationSupported {
+                conn.preferredVideoStabilizationMode = .off
+            }
         } else {
             log("ATTENZIONE: impossibile aggiungere l'uscita video per il rilevamento delle mosse")
         }
@@ -155,6 +159,7 @@ final class CameraController: NSObject, ObservableObject {
         }
         applyMaxDimensions()
         logOutput()
+        logGeometry(dev)
 
         session.startRunning()
         log("Sessione avviata: \(session.isRunning)")
@@ -203,6 +208,64 @@ final class CameraController: NSObject, ObservableObject {
         log("Formati disponibili (\(dev.formats.count)):")
         for (i, f) in dev.formats.enumerated() {
             log("  [\(i)] \(describe(f))\(f == dev.activeFormat ? "  ← ATTIVO" : "")")
+        }
+    }
+
+    private func logGeometry(_ dev: AVCaptureDevice) {
+        let stab = motion.output.connection(with: .video).map {
+            "supportata \($0.isVideoStabilizationSupported), attiva \($0.activeVideoStabilizationMode.rawValue) (0 = spenta)"
+        } ?? "nessuna connessione"
+        log("Geometria: stabilizzazione video \(stab); correzione distorsione supportata \(dev.isGeometricDistortionCorrectionSupported) attiva \(dev.isGeometricDistortionCorrectionEnabled); campo visivo \(String(format: "%.2f", dev.activeFormat.videoFieldOfView))°; zoom \(dev.videoZoomFactor)")
+    }
+
+    /// Scatta una foto e prende un fotogramma video nello stesso momento, poi misura di quanto
+    /// la scena è spostata nel video rispetto alla foto. Il risultato va nel log.
+    func diagnoseAlignment() {
+        guard isReady, !isCapturing, let dim = availableDims.last, let dev = device else { return }
+        isCapturing = true
+        statusText = "Diagnosi allineamento…"
+        log("Diagnosi allineamento foto/video: inquadra qualcosa di fermo e con dettagli")
+        logGeometry(dev)
+        let params = CaptureParams(mode: .jpeg, dim: dim, jpegQuality: nil)
+        let group = DispatchGroup()
+        var frame: GrayImage?
+        var frameSize = ""
+        var photo: Data?
+        group.enter()
+        motion.grabNextFrame { pixelBuffer in
+            frameSize = "\(CVPixelBufferGetWidth(pixelBuffer))×\(CVPixelBufferGetHeight(pixelBuffer))"
+            frame = GrayImage(lumaOf: pixelBuffer, width: 576)
+            group.leave()
+        }
+        group.enter()
+        sessionQueue.async {
+            self.performCapture(params, light: true) { result in
+                photo = result?.data
+                group.leave()
+            }
+        }
+        group.notify(queue: processingQueue) {
+            defer {
+                DispatchQueue.main.async {
+                    self.isCapturing = false
+                    self.statusText = "Pronta"
+                }
+            }
+            guard let photo, let frame, let still = GrayImage(jpeg: photo, width: 576) else {
+                log("Diagnosi: foto o fotogramma non disponibili")
+                return
+            }
+            log("Diagnosi: fotogramma video \(frameSize), foto ridotta a \(still.width)×\(still.height), video ridotto a \(frame.width)×\(frame.height)")
+            guard let shift = measureShift(photo: still, video: frame) else {
+                log("Diagnosi: proporzioni diverse tra foto e video, impossibile confrontare")
+                return
+            }
+            // Il sensore è "sdraiato": foto e video si vedono ruotati di 90° in senso orario,
+            // quindi l'asse x del sensore diventa la verticale (verso il basso) e la y l'orizzontale (verso sinistra).
+            let down = Double(shift.dx) / Double(still.width) * 100
+            let right = -Double(shift.dy) / Double(still.height) * 100
+            log(String(format: "Diagnosi: nel VIDEO la scena è spostata di %.2f%% in verticale (positivo = più in basso) e %.2f%% in orizzontale (positivo = più a destra) rispetto alla FOTO, sull'immagine verticale. Somiglianza %.2f (1 = identiche). Pixel sensore: dx %d, dy %d su %d×%d.",
+                       down, right, shift.score, shift.dx, shift.dy, still.width, still.height))
         }
     }
 

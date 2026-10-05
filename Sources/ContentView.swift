@@ -111,6 +111,7 @@ struct ContentView: View {
                     Button("Schermo nero (risparmia batteria)") { setBlackScreen(true) }
                     Section("Prove (la foto resta sul telefono)") {
                         Button("Scatto di prova") { camera.capture() }
+                        Button("Diagnosi allineamento foto/video") { camera.diagnoseAlignment() }
                         Button("Serie da 5 scatti") { camera.captureSeries(count: 5) }
                         Button("Serie da 20 scatti") { camera.captureSeries(count: 20) }
                     }

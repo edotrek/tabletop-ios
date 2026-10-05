@@ -27,6 +27,7 @@ final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     private var candidate: [UInt8]?
     private var lastSent: [UInt8]?
     private var stillFor = 0.0
+    private var pendingGrab: ((CVPixelBuffer) -> Void)?
 
     override init() {
         super.init()
@@ -62,8 +63,17 @@ final class MotionDetector: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         }
     }
 
+    /// Consegna il prossimo fotogramma video (sulla coda video; non trattenerlo a lungo).
+    func grabNextFrame(_ handler: @escaping (CVPixelBuffer) -> Void) {
+        queue.async { self.pendingGrab = handler }
+    }
+
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         onFrame?(sampleBuffer)
+        if let grab = pendingGrab, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            pendingGrab = nil
+            grab(pixelBuffer)
+        }
         let now = CACurrentMediaTime()
         guard now - lastCheck >= Self.checkInterval, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastCheck = now
