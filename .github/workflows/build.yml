@@ -21,14 +21,15 @@ jobs:
 
       - name: Compila (senza firma)
         run: |
-          set -o pipefail
           xcodebuild -project TabletopCam.xcodeproj -scheme TabletopCam \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
-            build | tee xcodebuild.log | grep -E "error:|warning:|BUILD" || true
-          test -d build/Build/Products/Release-iphoneos/TabletopCam.app
+            build > xcodebuild.log 2>&1 || true
+          grep -E "error:|warning: .*Sources/|BUILD" xcodebuild.log || true
+          # La cartella .app esiste anche se la compilazione fallisce: conta solo l'esito di xcodebuild.
+          grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
 
       - name: Crea IPA
         run: |

@@ -44,18 +44,20 @@ struct GrayImage {
             kCGImageSourceThumbnailMaxPixelSize: outWidth,
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        width = outWidth
-        height = outWidth * image.height / image.width
-        var bytes = [UInt8](repeating: 0, count: width * height)
+        let w = outWidth
+        let h = outWidth * image.height / image.width
+        var bytes = [UInt8](repeating: 0, count: w * h)
         let drawn: Bool = bytes.withUnsafeMutableBytes { buffer in
-            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
-                                          bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(),
+            guard let context = CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8,
+                                          bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(),
                                           bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
             context.interpolationQuality = .high
-            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
             return true
         }
         guard drawn else { return nil }
+        width = w
+        height = h
         pixels = bytes.map(Float.init)
     }
 
