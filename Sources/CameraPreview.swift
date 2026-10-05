@@ -9,6 +9,8 @@ final class PreviewUIView: UIView {
 /// Anteprima della fotocamera. Un tocco mette a fuoco ed espone su quel punto.
 struct CameraPreview: UIViewRepresentable {
     let camera: CameraController
+    /// false = anteprima spenta (schermo nero): foto e video continuano.
+    var active = true
 
     func makeUIView(context: Context) -> PreviewUIView {
         let view = PreviewUIView()
@@ -24,6 +26,9 @@ struct CameraPreview: UIViewRepresentable {
     func updateUIView(_ view: PreviewUIView, context: Context) {
         if let conn = view.previewLayer.connection, conn.isVideoRotationAngleSupported(90), conn.videoRotationAngle != 90 {
             conn.videoRotationAngle = 90
+        }
+        if let conn = view.previewLayer.connection, conn.isEnabled != active {
+            conn.isEnabled = active
         }
     }
 

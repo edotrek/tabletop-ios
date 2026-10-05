@@ -6,6 +6,9 @@ struct ContentView: View {
     @EnvironmentObject var streamer: LiveStreamer
     @State private var showLog = false
     @State private var showPairing = false
+    @State private var blackScreen = false
+    @State private var showWakeHint = false
+    @State private var savedBrightness: CGFloat?
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -28,7 +31,7 @@ struct ContentView: View {
                 }
             }
 
-            CameraPreview(camera: camera)
+            CameraPreview(camera: camera, active: !blackScreen)
                 .aspectRatio(3.0 / 4.0, contentMode: .fit)
                 .overlay {
                     if camera.isCapturing || link.isSending {
@@ -105,6 +108,7 @@ struct ContentView: View {
 
                 Menu {
                     Button("Mostra log") { showLog = true }
+                    Button("Schermo nero (risparmia batteria)") { setBlackScreen(true) }
                     Section("Prove (la foto resta sul telefono)") {
                         Button("Scatto di prova") { camera.capture() }
                         Button("Serie da 5 scatti") { camera.captureSeries(count: 5) }
@@ -117,6 +121,13 @@ struct ContentView: View {
             }
             .padding(.bottom, 8)
         }
+        .overlay {
+            if blackScreen {
+                blackOverlay
+            }
+        }
+        .statusBarHidden(blackScreen)
+        .persistentSystemOverlays(blackScreen ? .hidden : .automatic)
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             camera.start()
@@ -131,6 +142,42 @@ struct ContentView: View {
         .sheet(isPresented: $showPairing) {
             PairingView()
         }
+    }
+
+    /// Schermo nero: sull'OLED i pixel neri sono spenti. Foto, video e scatti automatici continuano.
+    private var blackOverlay: some View {
+        Color.black
+            .ignoresSafeArea()
+            .overlay {
+                if showWakeHint {
+                    Text("Tocca due volte per riaccendere")
+                        .font(.footnote)
+                        .foregroundStyle(.gray)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { setBlackScreen(false) }
+            .onTapGesture {
+                showWakeHint = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showWakeHint = false }
+            }
+    }
+
+    private func setBlackScreen(_ on: Bool) {
+        let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
+        if on {
+            savedBrightness = screen?.brightness
+            screen?.brightness = 0
+            log("Schermo nero attivato")
+        } else {
+            if let savedBrightness { screen?.brightness = savedBrightness }
+            log("Schermo riacceso")
+        }
+        showWakeHint = on
+        if on {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showWakeHint = false }
+        }
+        blackScreen = on
     }
 
     private var linkColor: Color {
