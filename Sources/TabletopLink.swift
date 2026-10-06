@@ -1,5 +1,7 @@
+import Combine
 import Foundation
 import QuartzCore
+import UIKit
 
 /// Collegamento con il server di Tabletop: l'app si comporta come l'agente della reflex
 /// (dispositivo `photo-camera`, vedi apps/server/agent/tabletop-reflex.cmd).
@@ -27,6 +29,8 @@ final class TabletopLink: ObservableObject {
     @Published private(set) var isSending = false
     @Published private(set) var lastUpload: String?
     @Published private(set) var sentCount = 0
+    /// Ultimo errore di collegamento/invio (per il pannello del PC).
+    @Published private(set) var lastError: String?
 
     var isPaired: Bool { token != nil }
 
@@ -46,6 +50,13 @@ final class TabletopLink: ObservableObject {
 
     let streamer: LiveStreamer
     private let camera: CameraController
+    private let screen: ScreenState
+    // Pannello Fotocamera del PC: stato inviato solo mentre un host lo tiene aperto.
+    private var reportingStatus = false
+    private var statusWatchers: [NSObjectProtocol] = []
+    private var statusSubscriptions = Set<AnyCancellable>()
+    private var lastStatusSent: PhotoCamStatus?
+    private var statusScheduled = false
     private var trust: TrustDelegate { Self.trust }
     private var session: URLSession { Self.urlSession }
     private var token: String? {
@@ -54,9 +65,10 @@ final class TabletopLink: ObservableObject {
     private var pollTask: Task<Void, Never>?
     private var pending: String?
 
-    init(camera: CameraController, streamer: LiveStreamer) {
+    init(camera: CameraController, streamer: LiveStreamer, screen: ScreenState) {
         self.camera = camera
         self.streamer = streamer
+        self.screen = screen
         let defaults = UserDefaults.standard
         server = defaults.string(forKey: Keys.server) ?? Self.defaultServer
         token = defaults.string(forKey: Keys.token)
@@ -126,6 +138,7 @@ final class TabletopLink: ObservableObject {
         pollTask = nil
         token = nil
         pending = nil
+        setReportStatus(false)
         UserDefaults.standard.removeObject(forKey: Keys.token)
         state = .unpaired
     }
@@ -161,8 +174,13 @@ final class TabletopLink: ObservableObject {
                 }
                 guard status == 200 else { throw LinkError(serverError(data) ?? "errore \(status)") }
                 setOnline()
-                let commands = try JSONDecoder().decode(Commands.self, from: data)
-                if commands.capture == true {
+                // Letto a mano: comandi sconosciuti o campi nuovi non devono far fallire nulla.
+                let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+                if let report = json["reportStatus"] as? Bool { setReportStatus(report) }
+                for command in json["commands"] as? [[String: Any]] ?? [] {
+                    execute(command)
+                }
+                if json["capture"] as? Bool == true {
                     log("Tabletop chiede una foto")
                     send(reason: "request")
                 }
@@ -175,6 +193,7 @@ final class TabletopLink: ObservableObject {
     }
 
     private func setOnline() {
+        lastError = nil
         if state != .online {
             log("Collegato a Tabletop (\(server))")
             state = .online
@@ -183,6 +202,7 @@ final class TabletopLink: ObservableObject {
 
     private func setOffline(_ error: Error) {
         let message = (error as? LinkError)?.message ?? error.localizedDescription
+        lastError = "Server non raggiungibile: \(message)"
         if state != .offline(message) {
             log("Server non raggiungibile: \(message)")
             state = .offline(message)
@@ -245,6 +265,162 @@ final class TabletopLink: ObservableObject {
         }
     }
 
+    // MARK: - Pannello Fotocamera del PC
+
+    /// Comando dal pannello dell'host (sempre attivo, anche a pannello chiuso).
+    private func execute(_ command: [String: Any]) {
+        let name = command["command"] as? String ?? "?"
+        let on = command["on"] as? Bool
+        switch name {
+        case "focus-lock":
+            log("Dal PC: metti a fuoco al centro e blocca")
+            camera.focusCenterAndLock()
+        case "focus-unlock":
+            log("Dal PC: fuoco ed esposizione sbloccati")
+            camera.setLocked(false)
+        case "auto-capture":
+            guard let on else { break }
+            log("Dal PC: scatto automatico \(on ? "acceso" : "spento")")
+            if autoCapture != on { autoCapture = on }
+        case "video":
+            guard let on else { break }
+            log("Dal PC: video \(on ? "acceso" : "spento")")
+            if streamer.enabled != on { streamer.enabled = on }
+        case "fps":
+            guard let fps = command["fps"] as? Int, LiveStreamer.fpsOptions.contains(fps) else { break }
+            log("Dal PC: fluidità \(fps) fps")
+            if streamer.fps != fps { streamer.fps = fps }
+        case "black-screen":
+            guard let on else { break }
+            log("Dal PC: schermo nero \(on ? "acceso" : "spento")")
+            screen.setBlackScreen(on)
+        default:
+            log("Dal PC: comando sconosciuto ignorato (\(name))")
+        }
+    }
+
+    /// true = un host ha il pannello aperto. Vale l'ultimo valore ricevuto.
+    private func setReportStatus(_ on: Bool) {
+        guard on != reportingStatus else { return }
+        reportingStatus = on
+        if on {
+            log("Pannello Fotocamera aperto sul PC: invio lo stato quando cambia")
+            startStatusWatch()
+            scheduleStatus()
+        } else {
+            log("Pannello Fotocamera chiuso: smetto di inviare e misurare lo stato")
+            stopStatusWatch()
+        }
+    }
+
+    private func startStatusWatch() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        let center = NotificationCenter.default
+        for name in [UIDevice.batteryLevelDidChangeNotification,
+                     UIDevice.batteryStateDidChangeNotification,
+                     ProcessInfo.thermalStateDidChangeNotification] {
+            statusWatchers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.scheduleStatus() }
+            })
+        }
+        // I @Published avvisano prima di cambiare: scheduleStatus legge i valori al giro successivo.
+        let changes: [AnyPublisher<Void, Never>] = [
+            camera.$isLocked.map { _ in () }.eraseToAnyPublisher(),
+            camera.$isCapturing.map { _ in () }.eraseToAnyPublisher(),
+            camera.$lastError.map { _ in () }.eraseToAnyPublisher(),
+            $autoCapture.map { _ in () }.eraseToAnyPublisher(),
+            $isSending.map { _ in () }.eraseToAnyPublisher(),
+            $lastError.map { _ in () }.eraseToAnyPublisher(),
+            streamer.$enabled.map { _ in () }.eraseToAnyPublisher(),
+            streamer.$isLive.map { _ in () }.eraseToAnyPublisher(),
+            streamer.$fps.map { _ in () }.eraseToAnyPublisher(),
+            streamer.$status.map { _ in () }.eraseToAnyPublisher(),
+            screen.$blackScreen.map { _ in () }.eraseToAnyPublisher(),
+        ]
+        Publishers.MergeMany(changes)
+            .sink { [weak self] in self?.scheduleStatus() }
+            .store(in: &statusSubscriptions)
+    }
+
+    private func stopStatusWatch() {
+        statusWatchers.forEach(NotificationCenter.default.removeObserver)
+        statusWatchers.removeAll()
+        statusSubscriptions.removeAll()
+        UIDevice.current.isBatteryMonitoringEnabled = false
+        lastStatusSent = nil
+    }
+
+    /// Raggruppa i cambiamenti ravvicinati in un solo invio.
+    private func scheduleStatus() {
+        guard reportingStatus, !statusScheduled else { return }
+        statusScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.statusScheduled = false
+            self.sendStatusIfChanged()
+        }
+    }
+
+    private func currentStatus() -> PhotoCamStatus {
+        let device = UIDevice.current
+        let charging: Bool?
+        switch device.batteryState {
+        case .charging, .full: charging = true
+        case .unplugged: charging = false
+        default: charging = nil
+        }
+        let videoError = streamer.status.hasPrefix("errore") ? "Video: \(streamer.status)" : nil
+        return PhotoCamStatus(
+            app: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?",
+            focusLocked: camera.isLocked,
+            autoCapture: autoCapture,
+            video: streamer.enabled,
+            videoLive: streamer.isLive,
+            fps: streamer.fps,
+            capturing: isSending || camera.isCapturing,
+            blackScreen: screen.blackScreen,
+            battery: device.batteryLevel < 0 ? nil : (Double(device.batteryLevel) * 100).rounded() / 100,
+            charging: charging,
+            thermal: ProcessInfo.processInfo.thermalState.protocolName,
+            error: camera.lastError ?? lastError ?? videoError
+        )
+    }
+
+    private func sendStatusIfChanged() {
+        guard reportingStatus, let token, let url = URL(string: server + "/api/devices/status") else { return }
+        let status = currentStatus()
+        guard status != lastStatusSent else { return }
+        // Se l'invio fallisce non si ritenta: lo rimanda il prossimo cambiamento.
+        lastStatusSent = status
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "x-device-token")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+        request.httpBody = try? JSONEncoder().encode(status)
+        log("Stato inviato al PC: fuoco \(status.focusLocked ? "bloccato" : "auto"), video \(status.videoLive ? "in onda" : (status.video ? "acceso" : "spento")), batteria \(status.battery.map { "\(Int($0 * 100))%" } ?? "?"), temperatura \(status.thermal)")
+        Task {
+            do {
+                let (data, response) = try await session.data(for: request)
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if code == 401 {
+                    unpair(reason: "il dispositivo è stato rimosso dal pannello di Tabletop")
+                    return
+                }
+                guard code == 200 else {
+                    log("Invio stato al PC rifiutato: \(serverError(data) ?? "errore \(code)")")
+                    return
+                }
+                if let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                   let report = json["reportStatus"] as? Bool {
+                    setReportStatus(report)
+                }
+            } catch {
+                log("Invio stato al PC fallito: \(error.localizedDescription)")
+            }
+        }
+    }
+
     private func updateMotionDetection() {
         camera.motion.setEnabled(autoCapture && state == .online)
     }
@@ -261,9 +437,6 @@ private struct PairResponse: Decodable {
     let kind: String
 }
 
-private struct Commands: Decodable {
-    let capture: Bool?
-}
 
 struct LinkError: LocalizedError {
     let message: String

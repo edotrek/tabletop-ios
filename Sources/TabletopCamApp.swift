@@ -5,6 +5,7 @@ struct TabletopCamApp: App {
     @StateObject private var camera: CameraController
     @StateObject private var link: TabletopLink
     @StateObject private var streamer: LiveStreamer
+    @StateObject private var screen: ScreenState
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -14,8 +15,10 @@ struct TabletopCamApp: App {
         let streamer = LiveStreamer()
         let feeder = streamer.feeder
         camera.motion.onFrame = { feeder.feed($0) }
+        let screen = ScreenState()
         _streamer = StateObject(wrappedValue: streamer)
-        _link = StateObject(wrappedValue: TabletopLink(camera: camera, streamer: streamer))
+        _screen = StateObject(wrappedValue: screen)
+        _link = StateObject(wrappedValue: TabletopLink(camera: camera, streamer: streamer, screen: screen))
     }
 
     var body: some Scene {
@@ -24,6 +27,7 @@ struct TabletopCamApp: App {
                 .environmentObject(camera)
                 .environmentObject(link)
                 .environmentObject(streamer)
+                .environmentObject(screen)
                 .preferredColorScheme(.dark)
                 .onOpenURL { url in
                     // tabletopcam://pair?server=…&code=… (es. da un QR mostrato da Tabletop)

@@ -48,10 +48,13 @@ extension ProcessInfo.ThermalState {
     }
 }
 
-/// Temperatura e batteria (da chiamare sul main thread).
+/// Temperatura e batteria (da chiamare sul main thread). La misura della batteria si accende
+/// solo per questa lettura, a meno che il pannello del PC non la tenga già accesa.
 func deviceStatus() -> String {
     let device = UIDevice.current
+    let wasMonitoring = device.isBatteryMonitoringEnabled
     device.isBatteryMonitoringEnabled = true
+    defer { if !wasMonitoring { device.isBatteryMonitoringEnabled = false } }
     let level = device.batteryLevel < 0 ? "?" : "\(Int(device.batteryLevel * 100))%"
     let state: String
     switch device.batteryState {

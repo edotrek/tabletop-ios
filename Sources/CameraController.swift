@@ -40,6 +40,8 @@ final class CameraController: NSObject, ObservableObject {
     @Published var jpegQuality: Double? = nil
     @Published var lastResult: CaptureResult?
     @Published var motionInfo = ""
+    /// Ultimo errore della fotocamera (per il pannello del PC), nil quando risolto.
+    @Published private(set) var lastError: String?
     @Published var mode: CaptureMode = .jpeg {
         didSet { if mode != oldValue { modeChanged() } }
     }
@@ -67,9 +69,6 @@ final class CameraController: NSObject, ObservableObject {
         nc.addObserver(forName: AVCaptureSession.interruptionEndedNotification, object: session, queue: nil) { _ in
             log("Sessione ripresa")
         }
-        nc.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main) { _ in
-            log("Temperatura cambiata: \(ProcessInfo.processInfo.thermalState.italian)")
-        }
     }
 
     // MARK: - Avvio e configurazione
@@ -84,17 +83,24 @@ final class CameraController: NSObject, ObservableObject {
                     self.sessionQueue.async { self.configure() }
                 } else {
                     log("Permesso fotocamera negato")
-                    self.setStatus("Permesso fotocamera negato: abilitalo in Impostazioni")
+                    self.setError("Permesso fotocamera negato: abilitalo in Impostazioni")
                 }
             }
         default:
             log("Permesso fotocamera negato")
-            setStatus("Permesso fotocamera negato: abilitalo in Impostazioni")
+            setError("Permesso fotocamera negato: abilitalo in Impostazioni")
         }
     }
 
     private func setStatus(_ text: String) {
         DispatchQueue.main.async { self.statusText = text }
+    }
+
+    private func setError(_ text: String?) {
+        DispatchQueue.main.async {
+            if let text { self.statusText = text }
+            if self.lastError != text { self.lastError = text }
+        }
     }
 
     private func configure() {
@@ -104,7 +110,7 @@ final class CameraController: NSObject, ObservableObject {
 
         guard let dev = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             log("ERRORE: fotocamera principale non trovata")
-            setStatus("Fotocamera non trovata")
+            setError("Fotocamera non trovata")
             return
         }
         device = dev
@@ -119,7 +125,7 @@ final class CameraController: NSObject, ObservableObject {
         } catch {
             log("ERRORE input fotocamera: \(error)")
             session.commitConfiguration()
-            setStatus("Errore fotocamera")
+            setError("Errore fotocamera")
             return
         }
         guard session.canAddOutput(photoOutput) else {
@@ -347,6 +353,21 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
+    /// Comando dal PC: messa a fuoco al centro, poi blocco appena fuoco ed esposizione si fermano.
+    func focusCenterAndLock() {
+        focus(at: CGPoint(x: 0.5, y: 0.5))
+        sessionQueue.asyncAfter(deadline: .now() + 0.3) { self.lockWhenSettled(attempts: 30) }
+    }
+
+    private func lockWhenSettled(attempts: Int) {
+        guard let dev = device else { return }
+        if (dev.isAdjustingFocus || dev.isAdjustingExposure) && attempts > 0 {
+            sessionQueue.asyncAfter(deadline: .now() + 0.1) { self.lockWhenSettled(attempts: attempts - 1) }
+            return
+        }
+        setLocked(true)
+    }
+
     /// Blocca fuoco, esposizione e bilanciamento del bianco (il tavolo è fermo).
     func setLocked(_ locked: Bool) {
         sessionQueue.async {
@@ -511,11 +532,16 @@ final class CameraController: NSObject, ObservableObject {
     private func process(_ proc: PhotoCaptureProcessor, params p: CaptureParams, light: Bool) -> CaptureResult? {
         if let error = proc.error {
             log("ERRORE scatto: \(error)")
+            setError("Scatto non riuscito: \(error.localizedDescription)")
             return nil
         }
         guard let captured = proc.data else {
             log("ERRORE: nessun dato dalla foto")
+            setError("Scatto non riuscito: nessun dato")
             return nil
+        }
+        DispatchQueue.main.async {
+            if self.lastError?.hasPrefix("Scatto") == true { self.lastError = nil }
         }
         var info: [String] = []
         var timing = "otturatore \(seconds(proc.tShutter - proc.t0)), foto pronta \(seconds(proc.tProcessed - proc.t0)), fine \(seconds(proc.tEnd - proc.t0))"

@@ -4,11 +4,10 @@ struct ContentView: View {
     @EnvironmentObject var camera: CameraController
     @EnvironmentObject var link: TabletopLink
     @EnvironmentObject var streamer: LiveStreamer
+    @EnvironmentObject var screen: ScreenState
     @State private var showLog = false
     @State private var showPairing = false
-    @State private var blackScreen = false
     @State private var showWakeHint = false
-    @State private var savedBrightness: CGFloat?
     private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -133,7 +132,15 @@ struct ContentView: View {
             UIApplication.shared.isIdleTimerDisabled = true
             camera.start()
         }
-        .onReceive(timer) { _ in camera.refreshLive() }
+        .onReceive(timer) { _ in
+            if !blackScreen { camera.refreshLive() }
+        }
+        .onChange(of: blackScreen) { _, on in
+            showWakeHint = on
+            if on {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showWakeHint = false }
+            }
+        }
         .sheet(item: $camera.lastResult) { result in
             ResultView(result: result)
         }
@@ -164,21 +171,10 @@ struct ContentView: View {
             }
     }
 
+    private var blackScreen: Bool { screen.blackScreen }
+
     private func setBlackScreen(_ on: Bool) {
-        let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
-        if on {
-            savedBrightness = screen?.brightness
-            screen?.brightness = 0
-            log("Schermo nero attivato")
-        } else {
-            if let savedBrightness { screen?.brightness = savedBrightness }
-            log("Schermo riacceso")
-        }
-        showWakeHint = on
-        if on {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showWakeHint = false }
-        }
-        blackScreen = on
+        screen.setBlackScreen(on)
     }
 
     private var linkColor: Color {
