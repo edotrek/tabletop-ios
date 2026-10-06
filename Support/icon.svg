@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="felt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23855c"/>
+      <stop offset="1" stop-color="#0d4630"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#55565b"/>
+      <stop offset="1" stop-color="#232326"/>
+    </linearGradient>
+    <radialGradient id="glass" cx="0.42" cy="0.38" r="0.7">
+      <stop offset="0" stop-color="#3f7fd0"/>
+      <stop offset="0.6" stop-color="#173a6e"/>
+      <stop offset="1" stop-color="#07142b"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#felt)"/>
+  <!-- obiettivo -->
+  <circle cx="512" cy="512" r="400" fill="#141416"/>
+  <circle cx="512" cy="512" r="372" fill="url(#ring)"/>
+  <circle cx="512" cy="512" r="318" fill="#0a0a0c"/>
+  <circle cx="512" cy="512" r="296" fill="url(#glass)"/>
+  <!-- meeple -->
+  <g fill="#f5f1e6" stroke="#f5f1e6" stroke-width="34" stroke-linejoin="round">
+    <circle cx="512" cy="402" r="52" stroke="none"/>
+    <path d="M 476 458 L 392 482 L 368 520 L 444 540 L 424 612 L 396 662 L 464 662 L 512 612 L 560 662 L 628 662 L 600 612 L 580 540 L 656 520 L 632 482 L 548 458 Z"/>
+  </g>
+  <!-- riflesso -->
+  <path d="M 300 380 A 230 230 0 0 1 430 262" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="26" stroke-linecap="round"/>
+</svg>
