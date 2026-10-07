@@ -370,12 +370,52 @@ final class TabletopLink: ObservableObject {
             guard let fps = command["fps"] as? Int, LiveStreamer.fpsOptions.contains(fps) else { break }
             log("Dal PC: fluidità \(fps) fps")
             if streamer.fps != fps { streamer.fps = fps }
+        case "send-log":
+            log("Dal PC: invio il log")
+            uploadLog()
         case "black-screen":
             guard let on else { break }
             log("Dal PC: schermo nero \(on ? "acceso" : "spento")")
             screen.setBlackScreen(on)
         default:
             log("Dal PC: comando sconosciuto ignorato (\(name))")
+        }
+    }
+
+    /// Manda al server il log di questo avvio e di quello precedente (per scaricarlo dal PC).
+    private func uploadLog() {
+        guard let token, let url = URL(string: server + "/api/devices/log") else { return }
+        let maxBytes = 2_000_000
+        func tail(_ text: String, _ limit: Int) -> String {
+            let data = Data(text.utf8)
+            guard data.count > limit else { return text }
+            // Tiene la parte finale, la più utile.
+            return "[… inizio tagliato …]\n" + String(decoding: data.suffix(limit), as: UTF8.self)
+        }
+        let app = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let header = "Board Beam Cam \(app) · \(deviceModelIdentifier()) · iOS \(UIDevice.current.systemVersion)\n"
+        let current = tail(LogStore.shared.text, maxBytes * 3 / 4)
+        let previous = tail(LogStore.shared.previousText ?? "(nessuno)", maxBytes / 4)
+        let body = header + "\n=== Log di questo avvio ===\n" + current + "\n\n=== Log dell'avvio precedente ===\n" + previous + "\n"
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "x-device-token")
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        Task {
+            do {
+                let (data, response) = try await session.upload(for: request, from: Data(body.utf8))
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if code == 401 {
+                    unpair(reason: "il dispositivo è stato rimosso dal pannello di Board Beam")
+                } else if code == 200 {
+                    log("Log inviato al PC (\(megabytes(body.utf8.count)))")
+                } else {
+                    log("Invio del log rifiutato: \(serverError(data) ?? "errore \(code)")")
+                }
+            } catch {
+                log("Invio del log fallito: \(error.localizedDescription)")
+            }
         }
     }
 
