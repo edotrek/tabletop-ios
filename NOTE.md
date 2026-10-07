@@ -94,3 +94,5 @@ scatto solo dal long polling. Le foto a fine mossa arrivano con `reason=change`.
   campi di stato nuovi nel pannello (avviso firma anche a pannello chiuso), `motionRegions` in ogni polling
   (un poligono per finestra, `null` se una finestra mostra tutto), zone cambiate illuminate 8 s e nello
   storico (75 foto per stanza, copie 12 MP). Nessuna modifica all'app richiesta.
+- **0.8**: comando `send-log` dal pannello → `POST /api/devices/log` (testo, log attuale + precedente, max ~2 MB),
+  per scaricare il log sul PC senza toccare il telefono. Richiesta a Board Beam: `RICHIESTA-LOG-PANNELLO.md`.
