@@ -90,3 +90,7 @@ scatto solo dal long polling. Le foto a fine mossa arrivano con `reason=change`.
   Miniatura del rilevamento passata da 64 a 96 px di larghezza.
 - **Luce scarsa**: ISO ≥ 800 o tempo > 1/25 s (rientro sotto ISO 640 e 1/30 s) → avviso nell'app e `lowLight`.
 - Braccio arrivato: misura perfetta e stabile (da provare lo scatto automatico in partita).
+- **Risposta di Board Beam (2026-10-07)**: tutto implementato sul server (`RISPOSTA-BOARD-BEAM-0.7.md`):
+  campi di stato nuovi nel pannello (avviso firma anche a pannello chiuso), `motionRegions` in ogni polling
+  (un poligono per finestra, `null` se una finestra mostra tutto), zone cambiate illuminate 8 s e nello
+  storico (75 foto per stanza, copie 12 MP). Nessuna modifica all'app richiesta.
