@@ -25,6 +25,17 @@ final class LiveStreamer: ObservableObject {
     }
     @Published private(set) var status = "spento"
     @Published private(set) var isLive = false
+    /// Protezione dal calore: con temperatura alta il video scende a 10 fps, con temperatura
+    /// critica si spegne (le foto continuano). Non cambia le scelte dell'utente.
+    @Published private(set) var thermalLimit: ThermalLimit = .none
+
+    enum ThermalLimit: String {
+        case none
+        case reducedFps = "fps"
+        case videoOff = "video-off"
+    }
+
+    static let thermalFps = 10
 
     let feeder = FrameFeeder()
 
@@ -36,6 +47,7 @@ final class LiveStreamer: ObservableObject {
     private var room: Room?
     private var task: Task<Void, Never>?
     private var target: (server: String, token: String)?
+    private var thermalObserver: NSObjectProtocol?
     private lazy var events = RoomEvents { [weak self] text, live in
         Task { @MainActor in self?.roomChanged(text, live: live) }
     }
@@ -45,6 +57,44 @@ final class LiveStreamer: ObservableObject {
         enabled = defaults.object(forKey: Keys.enabled) as? Bool ?? true
         let savedFps = defaults.integer(forKey: Keys.fps)
         fps = Self.fpsOptions.contains(savedFps) ? savedFps : 15
+        thermalLimit = Self.limit(for: ProcessInfo.processInfo.thermalState)
+        thermalObserver = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.thermalChanged() }
+        }
+    }
+
+    private static func limit(for state: ProcessInfo.ThermalState) -> ThermalLimit {
+        switch state {
+        case .critical: return .videoOff
+        case .serious: return .reducedFps
+        default: return .none
+        }
+    }
+
+    private func thermalChanged() {
+        let state = ProcessInfo.processInfo.thermalState
+        let limit = Self.limit(for: state)
+        guard limit != thermalLimit else { return }
+        thermalLimit = limit
+        switch limit {
+        case .none: log("Temperatura \(state.italian): video di nuovo come scelto")
+        case .reducedFps: log("Temperatura \(state.italian): video ridotto a \(Self.thermalFps) fps per raffreddare")
+        case .videoOff: log("Temperatura \(state.italian): video spento per raffreddare (le foto continuano)")
+        }
+        restart()
+    }
+
+    /// Fluidità realmente usata (può essere ridotta dalla protezione dal calore).
+    var effectiveFps: Int {
+        thermalLimit == .reducedFps ? min(fps, Self.thermalFps) : fps
+    }
+
+    private var liveText: String {
+        thermalLimit == .reducedFps && fps > Self.thermalFps
+            ? "in diretta · \(effectiveFps) fps (ridotti per il calore)"
+            : "in diretta · \(effectiveFps) fps"
     }
 
     /// Chiamato da TabletopLink: dove trasmettere (nil = non collegati).
@@ -69,7 +119,11 @@ final class LiveStreamer: ObservableObject {
             status = enabled ? "in attesa del collegamento" : "spento"
             return
         }
-        let fps = self.fps
+        guard thermalLimit != .videoOff else {
+            status = "spento per il calore (le foto continuano)"
+            return
+        }
+        let fps = effectiveFps
         task = Task { [weak self] in
             var attempt = 0
             while !Task.isCancelled {
@@ -114,7 +168,7 @@ final class LiveStreamer: ObservableObject {
         }
         self.room = room
         isLive = true
-        status = "in diretta · \(fps) fps"
+        status = liveText
         log("Video in diretta: 2880×2160 (verticale), \(fps) fps")
     }
 
@@ -153,7 +207,7 @@ final class LiveStreamer: ObservableObject {
         log("Video: \(text)")
         guard enabled, target != nil else { return }
         if live {
-            if room != nil { status = "in diretta · \(fps) fps"; isLive = true }
+            if room != nil { status = liveText; isLive = true }
         } else {
             status = text
             isLive = false

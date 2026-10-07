@@ -31,7 +31,7 @@ struct ResultView: View {
                         .frame(height: 360)
                     }
 
-                    Text("File (anche nell'app File → Sul mio iPhone → Tabletop Cam → Foto)")
+                    Text("File (anche nell'app File → Sul mio iPhone → Board Beam Cam → Foto)")
                         .font(.headline)
                     ForEach(result.files, id: \.self) { url in
                         ShareLink(item: url) {

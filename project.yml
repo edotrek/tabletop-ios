@@ -6,7 +6,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.6"
+    MARKETING_VERSION: "0.7"
     CURRENT_PROJECT_VERSION: "1"
 packages:
   LiveKit:
@@ -23,11 +23,11 @@ targets:
     info:
       path: Support/Info.plist
       properties:
-        CFBundleDisplayName: Tabletop Cam
+        CFBundleDisplayName: Board Beam Cam
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSCameraUsageDescription: La fotocamera serve per fotografare il tavolo da gioco.
-        NSLocalNetworkUsageDescription: L'app invia le foto al server Tabletop sulla rete locale.
+        NSLocalNetworkUsageDescription: L'app invia le foto al server Board Beam sulla rete locale.
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

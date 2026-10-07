@@ -64,6 +64,8 @@ final class TabletopLink: ObservableObject {
     }
     private var pollTask: Task<Void, Never>?
     private var pending: String?
+    /// Ultima foto non arrivata per un problema di rete: si reinvia appena il server risponde.
+    private var failedPhoto: PendingPhoto?
 
     init(camera: CameraController, streamer: LiveStreamer, screen: ScreenState) {
         self.camera = camera
@@ -169,7 +171,7 @@ final class TabletopLink: ObservableObject {
                 let (data, response) = try await session.data(for: request)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 if status == 401 {
-                    unpair(reason: "il dispositivo è stato rimosso dal pannello di Tabletop")
+                    unpair(reason: "il dispositivo è stato rimosso dal pannello di Board Beam")
                     return
                 }
                 guard status == 200 else { throw LinkError(serverError(data) ?? "errore \(status)") }
@@ -177,11 +179,12 @@ final class TabletopLink: ObservableObject {
                 // Letto a mano: comandi sconosciuti o campi nuovi non devono far fallire nulla.
                 let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
                 if let report = json["reportStatus"] as? Bool { setReportStatus(report) }
+                if json.keys.contains("motionRegions") { setMotionRegions(json["motionRegions"]) }
                 for command in json["commands"] as? [[String: Any]] ?? [] {
                     execute(command)
                 }
                 if json["capture"] as? Bool == true {
-                    log("Tabletop chiede una foto")
+                    log("Board Beam chiede una foto")
                     send(reason: "request")
                 }
             } catch {
@@ -195,9 +198,10 @@ final class TabletopLink: ObservableObject {
     private func setOnline() {
         lastError = nil
         if state != .online {
-            log("Collegato a Tabletop (\(server))")
+            log("Collegato a Board Beam (\(server))")
             state = .online
         }
+        if failedPhoto != nil { resendFailedPhoto() }
     }
 
     private func setOffline(_ error: Error) {
@@ -224,45 +228,121 @@ final class TabletopLink: ObservableObject {
                 camera.captureForUpload { cont.resume(returning: $0) }
             }
             if let jpeg {
-                await upload(jpeg, reason: reason, captureTime: CACurrentMediaTime() - start)
+                let changes: [CGRect]? = await withCheckedContinuation { cont in
+                    camera.motion.changedRegions { cont.resume(returning: $0) }
+                }
+                let photo = PendingPhoto(jpeg: jpeg, reason: reason, changes: changes)
+                // Una foto nuova rende inutile reinviare quella vecchia.
+                failedPhoto = nil
+                if await upload(photo, captureTime: CACurrentMediaTime() - start) == .retry {
+                    failedPhoto = photo
+                    log("La foto verrà reinviata appena Board Beam torna raggiungibile")
+                }
             }
-            isSending = false
-            camera.motion.setBusy(false)
-            if let next = pending {
-                pending = nil
-                send(reason: next)
-            }
+            finishSending()
         }
     }
 
-    private func upload(_ jpeg: Data, reason: String, captureTime: Double) async {
-        guard let token, let url = URL(string: server + "/api/devices/frame?reason=\(reason)") else { return }
+    private func finishSending() {
+        isSending = false
+        camera.motion.setBusy(false)
+        if let next = pending {
+            pending = nil
+            send(reason: next)
+        }
+    }
+
+    /// Reinvia l'ultima foto che non era arrivata (chiamato quando il server torna raggiungibile).
+    private func resendFailedPhoto() {
+        guard let photo = failedPhoto, !isSending, isPaired else { return }
+        failedPhoto = nil
+        isSending = true
+        camera.motion.setBusy(true)
+        log("Reinvio la foto che non era arrivata")
+        Task {
+            if await upload(photo, captureTime: nil) == .retry, failedPhoto == nil {
+                failedPhoto = photo
+            }
+            finishSending()
+        }
+    }
+
+    private enum UploadResult { case ok, retry, failed }
+
+    private func upload(_ photo: PendingPhoto, captureTime: Double?) async -> UploadResult {
+        guard let token, let url = URL(string: server + "/api/devices/frame?reason=\(photo.reason)") else { return .failed }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(token, forHTTPHeaderField: "x-device-token")
         request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        if let changes = photo.changes {
+            // Zone cambiate rispetto alla foto precedente, in frazioni della foto raddrizzata.
+            let boxes = changes.map { ["x": round4($0.minX), "y": round4($0.minY), "w": round4($0.width), "h": round4($0.height)] }
+            if let json = try? JSONSerialization.data(withJSONObject: boxes), let text = String(data: json, encoding: .utf8) {
+                request.setValue(text, forHTTPHeaderField: "x-changed-regions")
+            }
+        }
         request.timeoutInterval = 60
         let start = CACurrentMediaTime()
         do {
-            let (data, response) = try await session.upload(for: request, from: jpeg)
+            let (data, response) = try await session.upload(for: request, from: photo.jpeg)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if status == 401 {
-                unpair(reason: "il dispositivo è stato rimosso dal pannello di Tabletop")
-                return
+                unpair(reason: "il dispositivo è stato rimosso dal pannello di Board Beam")
+                return .failed
             }
-            guard status == 200 else { throw LinkError(serverError(data) ?? "errore \(status)") }
+            guard status == 200 else {
+                let message = serverError(data) ?? "errore \(status)"
+                log("ERRORE invio foto: \(message)")
+                // Errori del server (5xx) si riprovano; una foto rifiutata (4xx) no.
+                if status >= 500 {
+                    setOffline(LinkError(message))
+                    return .retry
+                }
+                lastError = "Foto rifiutata: \(message)"
+                return .failed
+            }
             let uploadTime = CACurrentMediaTime() - start
             camera.motion.confirmSent()
             setOnline()
             sentCount += 1
             let time = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-            let why = reason == "change" ? "fine mossa" : "richiesta"
-            lastUpload = "Ultima foto \(time) (\(why)): scatto \(seconds(captureTime)) + invio \(seconds(uploadTime))"
-            log("Foto inviata (\(why)) \(megabytes(jpeg.count)): scatto \(seconds(captureTime)), invio \(seconds(uploadTime))")
+            let why = photo.reason == "change" ? "fine mossa" : "richiesta"
+            let changesText = photo.changes.map { " · \($0.count) zone cambiate" } ?? ""
+            if let captureTime {
+                lastUpload = "Ultima foto \(time) (\(why)): scatto \(seconds(captureTime)) + invio \(seconds(uploadTime))\(changesText)"
+                log("Foto inviata (\(why)) \(megabytes(photo.jpeg.count)): scatto \(seconds(captureTime)), invio \(seconds(uploadTime))\(changesText)")
+            } else {
+                lastUpload = "Ultima foto \(time) (\(why), reinviata)\(changesText)"
+                log("Foto reinviata (\(why)) \(megabytes(photo.jpeg.count)) in \(seconds(uploadTime))")
+            }
+            return .ok
         } catch {
             log("ERRORE invio foto: \(error.localizedDescription)")
             setOffline(error)
+            return .retry
         }
+    }
+
+    // MARK: - Zona del tabellone
+
+    private var motionRegionsKey: String?
+
+    /// Poligoni (punti {x, y} in frazioni della foto raddrizzata) in cui guardare le mosse.
+    /// null o [] = tutta l'inquadratura. Vale l'ultimo valore ricevuto.
+    private func setMotionRegions(_ value: Any?) {
+        let polygons: [[CGPoint]] = (value as? [[[String: Any]]] ?? []).map { polygon in
+            polygon.compactMap { point in
+                guard let x = (point["x"] as? NSNumber)?.doubleValue, let y = (point["y"] as? NSNumber)?.doubleValue else { return nil }
+                return CGPoint(x: min(max(x, 0), 1), y: min(max(y, 0), 1))
+            }
+        }
+        let key = polygons.map { $0.map { String(format: "%.3f,%.3f", $0.x, $0.y) }.joined(separator: ";") }.joined(separator: "|")
+        guard key != motionRegionsKey else { return }
+        motionRegionsKey = key
+        log(polygons.isEmpty ? "Board Beam: nessuna zona del tabellone, guardo tutta l'inquadratura"
+                             : "Board Beam: zona del tabellone ricevuta (\(polygons.count) zone)")
+        camera.motion.setRegions(polygons)
     }
 
     // MARK: - Pannello Fotocamera del PC
@@ -328,6 +408,8 @@ final class TabletopLink: ObservableObject {
             camera.$isLocked.map { _ in () }.eraseToAnyPublisher(),
             camera.$isCapturing.map { _ in () }.eraseToAnyPublisher(),
             camera.$lastError.map { _ in () }.eraseToAnyPublisher(),
+            camera.$lowLight.map { _ in () }.eraseToAnyPublisher(),
+            streamer.$thermalLimit.map { _ in () }.eraseToAnyPublisher(),
             $autoCapture.map { _ in () }.eraseToAnyPublisher(),
             $isSending.map { _ in () }.eraseToAnyPublisher(),
             $lastError.map { _ in () }.eraseToAnyPublisher(),
@@ -382,7 +464,11 @@ final class TabletopLink: ObservableObject {
             battery: device.batteryLevel < 0 ? nil : (Double(device.batteryLevel) * 100).rounded() / 100,
             charging: charging,
             thermal: ProcessInfo.processInfo.thermalState.protocolName,
-            error: camera.lastError ?? lastError ?? videoError
+            error: camera.lastError ?? lastError ?? videoError,
+            signatureExpires: Signature.iso8601,
+            thermalLimit: streamer.thermalLimit == .none ? nil : streamer.thermalLimit.rawValue,
+            lowLight: camera.lowLight,
+            iso: camera.iso
         )
     }
 
@@ -404,7 +490,7 @@ final class TabletopLink: ObservableObject {
                 let (data, response) = try await session.data(for: request)
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 if code == 401 {
-                    unpair(reason: "il dispositivo è stato rimosso dal pannello di Tabletop")
+                    unpair(reason: "il dispositivo è stato rimosso dal pannello di Board Beam")
                     return
                 }
                 guard code == 200 else {
@@ -428,6 +514,16 @@ final class TabletopLink: ObservableObject {
     private func serverError(_ data: Data) -> String? {
         (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
     }
+}
+
+private struct PendingPhoto {
+    let jpeg: Data
+    let reason: String
+    let changes: [CGRect]?
+}
+
+private func round4(_ value: CGFloat) -> Double {
+    (Double(value) * 10_000).rounded() / 10_000
 }
 
 private struct PairResponse: Decodable {

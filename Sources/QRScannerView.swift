@@ -1,7 +1,7 @@
 import SwiftUI
 import VisionKit
 
-/// Lettore del QR "per l'app Tabletop Cam" mostrato nel riquadro Collega reflex.
+/// Lettore del QR "per l'app Board Beam Cam" mostrato nel riquadro Collega reflex.
 struct QRScannerView: View {
     let onFound: (String) -> Void
     @Environment(\.dismiss) private var dismiss

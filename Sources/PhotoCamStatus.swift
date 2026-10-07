@@ -15,9 +15,18 @@ struct PhotoCamStatus: Encodable, Equatable {
     var charging: Bool?
     var thermal: String
     var error: String?
+    // Campi aggiunti nella 0.7 (il server li ignora finché non li conosce).
+    /// Scadenza della firma dell'app (ISO 8601), nil se sconosciuta.
+    var signatureExpires: String?
+    /// Protezione dal calore: "fps" (video ridotto), "video-off" (video spento), nil = nessuna.
+    var thermalLimit: String?
+    /// Poca luce sul tavolo: le foto perdono dettaglio.
+    var lowLight: Bool
+    var iso: Int
 
     private enum CodingKeys: String, CodingKey {
         case app, focusLocked, autoCapture, video, videoLive, fps, capturing, blackScreen, battery, charging, thermal, error
+        case signatureExpires, thermalLimit, lowLight, iso
     }
 
     func encode(to encoder: Encoder) throws {
@@ -34,6 +43,10 @@ struct PhotoCamStatus: Encodable, Equatable {
         try c.encode(charging, forKey: .charging)
         try c.encode(thermal, forKey: .thermal)
         try c.encode(error, forKey: .error)
+        try c.encode(signatureExpires, forKey: .signatureExpires)
+        try c.encode(thermalLimit, forKey: .thermalLimit)
+        try c.encode(lowLight, forKey: .lowLight)
+        try c.encode(iso, forKey: .iso)
     }
 }
 

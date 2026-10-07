@@ -9,7 +9,8 @@ struct TabletopCamApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        log("Avvio Tabletop Cam \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "?") (build \(Bundle.main.infoDictionary?["CFBundleVersion"] ?? "?"))")
+        log("Avvio Board Beam Cam \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "?") (build \(Bundle.main.infoDictionary?["CFBundleVersion"] ?? "?"))")
+        log(Signature.text)
         let camera = CameraController()
         _camera = StateObject(wrappedValue: camera)
         let streamer = LiveStreamer()

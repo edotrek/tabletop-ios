@@ -14,7 +14,7 @@ struct PairingView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Nel pannello di Tabletop apri **Collega reflex** e inquadra il **QR piccolo** \"per l'app Tabletop Cam\" (vale 10 minuti).")
+                    Text("Nel pannello di Board Beam apri **Collega reflex** e inquadra il **QR piccolo** \"per l'app Board Beam Cam\" (vale 10 minuti).")
                     Button {
                         camera.setPaused(true)
                         showScanner = true
@@ -72,7 +72,7 @@ struct PairingView: View {
                     .disabled(working || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .navigationTitle("Collega a Tabletop")
+            .navigationTitle("Collega a Board Beam")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

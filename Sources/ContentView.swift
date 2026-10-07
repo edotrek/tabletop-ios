@@ -15,8 +15,16 @@ struct ContentView: View {
             linkBar
 
             VStack(spacing: 2) {
-                Text(link.isSending ? "Scatto e invio a Tabletop…" : camera.statusText).font(.headline)
+                Text(link.isSending ? "Scatto e invio a Board Beam…" : camera.statusText).font(.headline)
                 Text(camera.liveInfo).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                if camera.lowLight {
+                    Label("Luce scarsa: le foto perdono dettaglio", systemImage: "lightbulb.slash")
+                        .font(.caption.bold())
+                        .foregroundStyle(.yellow)
+                }
+                Text(Signature.text)
+                    .font(.caption2)
+                    .foregroundStyle(Signature.isExpiringSoon ? .orange : .secondary)
                 if link.isPaired {
                     Text("Video: \(streamer.status)").font(.caption).foregroundStyle(streamer.isLive ? .green : .secondary)
                 }
@@ -188,10 +196,10 @@ struct ContentView: View {
 
     private var linkText: String {
         switch link.state {
-        case .unpaired: return "Non collegata a Tabletop"
-        case .connecting: return "Collegamento a Tabletop…"
-        case .online: return "Collegata a Tabletop · \(link.sentCount) foto inviate"
-        case .offline(let message): return "Tabletop non raggiungibile: \(message)"
+        case .unpaired: return "Non collegata a Board Beam"
+        case .connecting: return "Collegamento a Board Beam…"
+        case .online: return "Collegata a Board Beam · \(link.sentCount) foto inviate"
+        case .offline(let message): return "Board Beam non raggiungibile: \(message)"
         }
     }
 

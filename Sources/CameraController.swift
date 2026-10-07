@@ -40,6 +40,9 @@ final class CameraController: NSObject, ObservableObject {
     @Published var jpegQuality: Double? = nil
     @Published var lastResult: CaptureResult?
     @Published var motionInfo = ""
+    /// Poca luce: ISO alti o tempi lunghi fanno perdere dettaglio alle foto.
+    @Published private(set) var lowLight = false
+    @Published private(set) var iso: Int = 0
     /// Ultimo errore della fotocamera (per il pannello del PC), nil quando risolto.
     @Published private(set) var lastError: String?
     @Published var mode: CaptureMode = .jpeg {
@@ -402,8 +405,25 @@ final class CameraController: NSObject, ObservableObject {
         return String(format: "fuoco %.2f · ISO %.0f · ", dev.lensPosition, dev.iso) + shutterText
     }
 
+    /// Con isteresi, per non far lampeggiare l'avviso. Sul main thread.
+    private func updateLowLight(_ dev: AVCaptureDevice) {
+        let isoNow = dev.iso
+        let shutter = dev.exposureDuration.seconds
+        let roundedIso = Int(isoNow.rounded())
+        if roundedIso != iso { iso = roundedIso }
+        let low = lowLight
+            ? !(isoNow < 640 && shutter <= 1.0 / 30)
+            : (isoNow >= 800 || shutter > 1.0 / 25)
+        guard low != lowLight else { return }
+        lowLight = low
+        log(low
+            ? "Luce scarsa (\(exposureDescription(dev))): le foto perdono dettaglio, aggiungi luce sul tavolo"
+            : "Luce di nuovo sufficiente (\(exposureDescription(dev)))")
+    }
+
     func refreshLive() {
         guard let dev = device else { return }
+        updateLowLight(dev)
         var text = exposureDescription(dev)
         if dev.isAdjustingFocus || dev.isAdjustingExposure { text += " · regolo…" }
         text += " · \(ProcessInfo.processInfo.thermalState.italian)"
@@ -465,11 +485,12 @@ final class CameraController: NSObject, ObservableObject {
     /// Da chiamare sul main thread; `completion` arriva su una coda qualsiasi.
     func captureForUpload(completion: @escaping (Data?) -> Void) {
         guard isReady, let dim = availableDims.last else {
-            log("Fotocamera non pronta: scatto per Tabletop annullato")
+            log("Fotocamera non pronta: scatto per Board Beam annullato")
             completion(nil)
             return
         }
         let params = CaptureParams(mode: .jpeg, dim: dim, jpegQuality: nil)
+        if let dev = device { updateLowLight(dev) }
         motion.snapshotForUpload()
         sessionQueue.async {
             self.performCapture(params, light: true) { completion($0?.data) }
