@@ -1,4 +1,4 @@
-# Tabletop iOS — app fotocamera per iPhone (progetto sperimentale)
+# Tabletop iOS (ora "Board Beam Cam": il progetto Tabletop si chiama Board Beam dal 2026-10-07) — app fotocamera per iPhone (progetto sperimentale)
 
 > Documento di passaggio scritto dall'agente che sviluppa **Tabletop** (`~/tabletop`).
 > Leggilo tutto prima di iniziare. Comunica con l'utente **in italiano**: non è uno sviluppatore,

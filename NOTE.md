@@ -75,3 +75,18 @@ scatto solo dal long polling. Le foto a fine mossa arrivano con `reason=change`.
 - Diagnosi nell'app (0.5): fotogramma video grezzo vs foto 48 MP → spostamento 0,0–0,2%, somiglianza 0,97.
   **Nel telefono coincidono**: la differenza nasce dopo (codifica/trasmissione o visualizzazione).
   **Decisione dell'utente: si tiene la correzione manuale di Tabletop**, nessuna ricerca della causa.
+
+## Versione 0.7 (2026-10-07) — Board Beam Cam
+- **Nome**: il progetto Tabletop ora si chiama **Board Beam**, l'app **Board Beam Cam** (solo testi visibili;
+  bundle id, schema `tabletopcam://`, nomi interni invariati). Icona: obiettivo con meeple "teletrasportato"
+  su fondo viola (`Support/icon.svg`).
+- **Scadenza firma**: letta da `embedded.mobileprovision`, mostrata nell'app (arancione se < 2 giorni) e
+  inviata al pannello (`signatureExpires`). L'utente ha comunque un servizio che reinstalla in automatico.
+- **Calore**: temperatura `serious` → video a max 10 fps; `critical` → video spento; foto sempre attive.
+  Si ripristina da solo. (Usa la notifica di sistema della temperatura sempre, non la batteria.)
+- **Reinvio foto**: errore di rete o 5xx → la foto si reinvia quando il server risponde; una foto nuova la sostituisce.
+- **Zona del tabellone** (`motionRegions` nel polling) e **zone cambiate** (`x-changed-regions` sull'invio):
+  pronte nell'app, servono le modifiche lato Board Beam (vedi `RICHIESTA-PER-BOARD-BEAM.md`).
+  Miniatura del rilevamento passata da 64 a 96 px di larghezza.
+- **Luce scarsa**: ISO ≥ 800 o tempo > 1/25 s (rientro sotto ISO 640 e 1/30 s) → avviso nell'app e `lowLight`.
+- Braccio arrivato: misura perfetta e stabile (da provare lo scatto automatico in partita).
